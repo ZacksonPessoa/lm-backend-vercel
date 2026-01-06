@@ -8,15 +8,16 @@ const corsHeaders = {
 };
 
 export default async function handler(req, res) {
+  // Set CORS headers PRIMEIRO, antes de qualquer outra operação
+  // No Vercel, é crítico definir headers antes de qualquer resposta
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
   // Handle preflight OPTIONS request
   if (req.method === "OPTIONS") {
-    return res.status(200).json({ ok: true });
+    return res.status(200).end();
   }
-
-  // Set CORS headers
-  Object.entries(corsHeaders).forEach(([key, value]) => {
-    res.setHeader(key, value);
-  });
 
   // GET: Buscar notificações
   if (req.method === "GET") {

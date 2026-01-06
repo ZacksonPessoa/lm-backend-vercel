@@ -8,15 +8,15 @@ const corsHeaders = {
 };
 
 export default async function handler(req, res) {
-  // Handle preflight OPTIONS request
-  if (req.method === "OPTIONS") {
-    return res.status(200).json({ ok: true });
-  }
-
-  // Set CORS headers
+  // Set CORS headers PRIMEIRO, antes de qualquer outra operação
   Object.entries(corsHeaders).forEach(([key, value]) => {
     res.setHeader(key, value);
   });
+
+  // Handle preflight OPTIONS request
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });

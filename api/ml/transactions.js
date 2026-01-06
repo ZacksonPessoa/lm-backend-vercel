@@ -8,15 +8,15 @@ const corsHeaders = {
 };
 
 export default async function handler(req, res) {
-  // Handle preflight OPTIONS request
-  if (req.method === "OPTIONS") {
-    return res.status(200).json({ ok: true });
-  }
-
-  // Set CORS headers
+  // Set CORS headers PRIMEIRO, antes de qualquer outra operação
   Object.entries(corsHeaders).forEach(([key, value]) => {
     res.setHeader(key, value);
   });
+
+  // Handle preflight OPTIONS request
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -70,6 +70,19 @@ export default async function handler(req, res) {
       // Processar cada pedido
       for (const order of orders) {
         if (order.order_items && order.order_items.length > 0) {
+          // Buscar detalhes completos do pedido
+          let orderDetails = null;
+          try {
+            const orderDetailResp = await fetch(`https://api.mercadolibre.com/orders/${order.id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (orderDetailResp.ok) {
+              orderDetails = await orderDetailResp.json();
+            }
+          } catch (e) {
+            console.error(`Error fetching order ${order.id} details:`, e);
+          }
+
           // Para cada item do pedido, criar uma transação
           for (const item of order.order_items) {
             const transactionDate = new Date(order.date_created);
@@ -94,12 +107,47 @@ export default async function handler(req, res) {
             const year = transactionDate.getFullYear();
             const formattedDate = `${day} de ${month} de ${year}`;
 
+            // Buscar informações do comprador
+            let buyerName = "-";
+            let buyerCpf = "-";
+            let buyerAddress = "-";
+
+            const buyerData = orderDetails?.buyer || order.buyer;
+            if (buyerData) {
+              buyerName = buyerData.nickname || buyerData.first_name || buyerData.name || "-";
+              
+              // Buscar informações de identificação se disponível
+              if (buyerData.billing_info?.doc_number) {
+                buyerCpf = buyerData.billing_info.doc_number;
+              } else if (buyerData.identification?.number) {
+                buyerCpf = buyerData.identification.number;
+              }
+            }
+
+            // Buscar endereço de entrega
+            const shippingData = orderDetails?.shipping || order.shipping;
+            if (shippingData && shippingData.receiver_address) {
+              const addr = shippingData.receiver_address;
+              const addressParts = [];
+              if (addr.address_line) addressParts.push(addr.address_line);
+              if (addr.street_name) addressParts.push(addr.street_name);
+              if (addr.street_number) addressParts.push(addr.street_number);
+              if (addr.city?.name) addressParts.push(addr.city.name);
+              if (addr.state?.name) addressParts.push(addr.state.name);
+              if (addr.zip_code) addressParts.push(addr.zip_code);
+              buyerAddress = addressParts.length > 0 ? addressParts.join(", ") : "-";
+            }
+
             transactions.push({
               id: order.id.toString(),
               productName: item.item.title || "Produto sem nome",
               date: formattedDate,
               status: status,
               quantity: item.quantity || 1,
+              price: item.unit_price || 0,
+              buyer: buyerName,
+              cpf: buyerCpf,
+              address: buyerAddress,
             });
           }
         }
@@ -111,7 +159,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      transactions: transactions.slice(0, 20), // Limitar a 20 transações
+      transactions: transactions.slice(0, 100), // Limitar a 100 transações
     });
   } catch (err) {
     console.error("Transactions API error:", err);
