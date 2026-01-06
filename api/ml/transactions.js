@@ -38,13 +38,24 @@ export default async function handler(req, res) {
       userId = meData.id;
     }
 
-    // Buscar pedidos do dia atual
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const fromDate = today.toISOString().split("T")[0];
+    // Buscar período dos parâmetros ou usar padrão (dia atual)
+    let fromDate = req.query.from;
+    let toDate = req.query.to;
+    
+    if (!fromDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      fromDate = today.toISOString().split("T")[0];
+    }
+    
+    if (!toDate) {
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      toDate = today.toISOString().split("T")[0];
+    }
 
-    // Buscar pedidos do vendedor do dia
-    const ordersUrl = `https://api.mercadolibre.com/orders/search?seller=${userId}&order.date_created.from=${fromDate}T00:00:00.000-00:00&limit=50`;
+    // Buscar pedidos do vendedor no período
+    const ordersUrl = `https://api.mercadolibre.com/orders/search?seller=${userId}&order.date_created.from=${fromDate}T00:00:00.000-00:00&order.date_created.to=${toDate}T23:59:59.999-00:00&limit=50`;
     
     const ordersResp = await fetch(ordersUrl, {
       headers: { Authorization: `Bearer ${token}` },

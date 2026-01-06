@@ -38,13 +38,22 @@ export default async function handler(req, res) {
       userId = meData.id;
     }
 
-    // Buscar pedidos recentes (últimos 30 dias)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const fromDate = thirtyDaysAgo.toISOString().split("T")[0];
+    // Buscar período dos parâmetros ou usar padrão (últimos 30 dias)
+    let fromDate = req.query.from;
+    let toDate = req.query.to;
+    
+    if (!fromDate) {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      fromDate = thirtyDaysAgo.toISOString().split("T")[0];
+    }
+    
+    if (!toDate) {
+      toDate = new Date().toISOString().split("T")[0];
+    }
 
-    // Buscar pedidos do vendedor
-    const ordersUrl = `https://api.mercadolibre.com/orders/search?seller=${userId}&order.date_created.from=${fromDate}T00:00:00.000-00:00&limit=100`;
+    // Buscar pedidos do vendedor no período
+    const ordersUrl = `https://api.mercadolibre.com/orders/search?seller=${userId}&order.date_created.from=${fromDate}T00:00:00.000-00:00&order.date_created.to=${toDate}T23:59:59.999-00:00&limit=100`;
     
     const ordersResp = await fetch(ordersUrl, {
       headers: { Authorization: `Bearer ${token}` },
