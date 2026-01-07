@@ -71,6 +71,10 @@ export default async function handler(req, res) {
           todaySales: 0,
           pendingShipments: 0,
           cancelled: 0,
+          totalOrders: 0,
+          netRevenue: 0,
+          realProfit: 0,
+          margin: 0,
         },
       });
     }
@@ -82,18 +86,39 @@ export default async function handler(req, res) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    let totalSales = 0;
+    let totalSales = 0; // Receita bruta
     let todaySales = 0;
     let pendingShipments = 0;
     let cancelled = 0;
+    let totalOrders = 0;
+    let totalCommissions = 0;
+    let totalShipping = 0;
+    let totalProductCosts = 0;
 
     orders.forEach((order) => {
       const orderDate = new Date(order.date_created);
       const orderTotal = order.total_amount || 0;
 
-      // Total de vendas
+      // Total de vendas (receita bruta)
       if (order.status !== "cancelled") {
         totalSales += orderTotal;
+        totalOrders++;
+
+        // Calcular comissão (estimativa ~13% do Mercado Livre)
+        const commission = orderTotal * 0.13;
+        totalCommissions += commission;
+
+        // Calcular frete
+        const shipping = order.shipping?.cost || 0;
+        totalShipping += shipping;
+
+        // Calcular custo do produto (estimativa 30% do preço de venda)
+        if (order.order_items && order.order_items.length > 0) {
+          order.order_items.forEach((item) => {
+            const itemTotal = (item.unit_price || 0) * (item.quantity || 1);
+            totalProductCosts += itemTotal * 0.3; // 30% como custo do produto
+          });
+        }
       }
 
       // Vendas do dia
@@ -112,13 +137,26 @@ export default async function handler(req, res) {
       }
     });
 
+    // Calcular receita líquida (bruta - comissões)
+    const netRevenue = totalSales - totalCommissions;
+    
+    // Calcular lucro real (receita líquida - custos do produto - frete)
+    const realProfit = netRevenue - totalProductCosts - totalShipping;
+    
+    // Calcular margem (%)
+    const margin = totalSales > 0 ? (realProfit / totalSales) * 100 : 0;
+
     return res.status(200).json({
       ok: true,
       stats: {
-        totalSales: Math.round(totalSales * 100) / 100, // Arredondar para 2 casas decimais
+        totalSales: Math.round(totalSales * 100) / 100, // Receita bruta
         todaySales,
         pendingShipments,
         cancelled,
+        totalOrders, // Nº de pedidos
+        netRevenue: Math.round(netRevenue * 100) / 100, // Receita líquida
+        realProfit: Math.round(realProfit * 100) / 100, // Lucro real
+        margin: Math.round(margin * 100) / 100, // Margem (%)
       },
     });
   } catch (err) {
