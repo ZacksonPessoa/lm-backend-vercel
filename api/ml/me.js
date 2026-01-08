@@ -1,4 +1,5 @@
 import { getAccessToken } from "./_getAccessToken.js";
+import { upsertUser } from "../_lib/db-helpers.js";
 
 // Headers CORS
 const corsHeaders = {
@@ -29,6 +30,14 @@ export default async function handler(req, res) {
     const data = await resp.json();
     if (!resp.ok) {
       return res.status(resp.status).json({ ok: false, error: "ML request failed", details: data });
+    }
+
+    // Salvar/atualizar usuário no banco de dados
+    try {
+      await upsertUser(data);
+    } catch (dbError) {
+      console.error("Erro ao salvar usuário no banco:", dbError);
+      // Não falhar a requisição se o banco falhar
     }
 
     return res.status(200).json({ ok: true, me: data });

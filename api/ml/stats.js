@@ -1,4 +1,5 @@
 import { getAccessToken } from "./_getAccessToken.js";
+import { getUserByMlId, upsertUser, upsertOrder, upsertOrderItem, upsertStatsCache, getStatsCache } from "../_lib/db-helpers.js";
 
 // Headers CORS
 const corsHeaders = {
@@ -82,6 +83,40 @@ export default async function handler(req, res) {
     const ordersData = await ordersResp.json();
     const orders = ordersData.results || [];
 
+    // Buscar ou criar usuário no banco
+    let dbUser;
+    try {
+      dbUser = await getUserByMlId(userId);
+      if (!dbUser) {
+        // Se não existe, buscar dados do usuário e criar
+        const meResp = await fetch("https://api.mercadolibre.com/users/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (meResp.ok) {
+          const meData = await meResp.json();
+          dbUser = await upsertUser(meData);
+        }
+      }
+    } catch (dbError) {
+      console.error("Erro ao buscar/criar usuário no banco:", dbError);
+    }
+
+    // Salvar pedidos e itens no banco
+    if (dbUser) {
+      for (const order of orders) {
+        try {
+          const orderId = await upsertOrder(dbUser.id, order);
+          if (orderId && order.order_items) {
+            for (const item of order.order_items) {
+              await upsertOrderItem(orderId, item);
+            }
+          }
+        } catch (orderError) {
+          console.error("Erro ao salvar pedido no banco:", orderError);
+        }
+      }
+    }
+
     // Calcular estatísticas
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -146,18 +181,38 @@ export default async function handler(req, res) {
     // Calcular margem (%)
     const margin = totalSales > 0 ? (realProfit / totalSales) * 100 : 0;
 
+    const statsResult = {
+      totalSales: Math.round(totalSales * 100) / 100, // Receita bruta
+      todaySales,
+      pendingShipments,
+      cancelled,
+      totalOrders, // Nº de pedidos
+      netRevenue: Math.round(netRevenue * 100) / 100, // Receita líquida
+      realProfit: Math.round(realProfit * 100) / 100, // Lucro real
+      margin: Math.round(margin * 100) / 100, // Margem (%)
+    };
+
+    // Salvar cache de estatísticas no banco
+    if (dbUser) {
+      try {
+        await upsertStatsCache(dbUser.id, fromDate, toDate, {
+          total_sales: statsResult.totalSales,
+          today_sales: statsResult.todaySales,
+          pending_shipments: statsResult.pendingShipments,
+          cancelled: statsResult.cancelled,
+          total_orders: statsResult.totalOrders,
+          net_revenue: statsResult.netRevenue,
+          real_profit: statsResult.realProfit,
+          margin: statsResult.margin,
+        });
+      } catch (cacheError) {
+        console.error("Erro ao salvar cache de estatísticas:", cacheError);
+      }
+    }
+
     return res.status(200).json({
       ok: true,
-      stats: {
-        totalSales: Math.round(totalSales * 100) / 100, // Receita bruta
-        todaySales,
-        pendingShipments,
-        cancelled,
-        totalOrders, // Nº de pedidos
-        netRevenue: Math.round(netRevenue * 100) / 100, // Receita líquida
-        realProfit: Math.round(realProfit * 100) / 100, // Lucro real
-        margin: Math.round(margin * 100) / 100, // Margem (%)
-      },
+      stats: statsResult,
     });
   } catch (err) {
     console.error("Stats API error:", err);

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@upstash/redis": "^1.36.0"
+    "@upstash/redis": "^1.36.0",
+    "pg": "^8.11.3"
   }
 }
