@@ -1,3 +1,3 @@
 export default function handler(req, res) {
-  res.status(200).json({ ok: true, service: "ml-backend-vercel" });
+  res.status(200).json({ ok: true, service: "ml-backend" });
 }

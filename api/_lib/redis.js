@@ -1,19 +1,26 @@
-import { Redis } from "@upstash/redis";
+import Redis from "ioredis";
 
-const url =
-  process.env.KV_REST_API_URL ||
-  process.env.UPSTASH_REDIS_REST_URL ||
-  process.env.STORAGE_REST_API_URL;
+// Cliente Redis local (Docker). Reutiliza a mesma instância entre chamadas no
+// servidor Express. Em produção/dev local, REDIS_URL vem do docker-compose
+// (ex.: redis://redis:6379 no Docker, redis://localhost:6379 fora).
+const url = process.env.REDIS_URL || "redis://localhost:6379";
 
-const token =
-  process.env.KV_REST_API_TOKEN ||
-  process.env.UPSTASH_REDIS_REST_TOKEN ||
-  process.env.STORAGE_REST_API_TOKEN;
+let _client = globalThis.__redisClient;
+if (!_client) {
+  _client = new Redis(url, {
+    lazyConnect: false,
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: true,
+  });
 
-if (!url || !token) {
-  throw new Error(
-    "Redis env vars missing. Expected KV_REST_API_URL/KV_REST_API_TOKEN (or UPSTASH_/STORAGE_ equivalents)."
-  );
+  _client.on("error", (err) => {
+    console.error("❌ Redis error:", err.message);
+  });
+  _client.on("connect", () => {
+    console.log(`✅ Redis conectado (${url})`);
+  });
+
+  globalThis.__redisClient = _client;
 }
 
-export const redis = new Redis({ url, token });
+export const redis = _client;
